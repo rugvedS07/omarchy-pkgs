@@ -1,0 +1,60 @@
+# Maintainer: LM Studio <team@lmstudio.ai>
+
+# Bionic publishes a self-contained AppImage, so keep that release artifact intact.
+# The launcher hands update ownership to pacman while the package is installed.
+pkgname=bionic-bin
+pkgver=1.1.1+5
+pkgrel=1
+pkgdesc="AI development environment from LM Studio"
+arch=('x86_64')
+url="https://lmstudio.ai/bionic"
+license=('LicenseRef-LM-Studio-Terms')
+depends=('hicolor-icon-theme')
+provides=("bionic=${pkgver}")
+conflicts=('bionic')
+options=('!debug' '!strip')
+
+_release="${pkgver/+/-}"
+_appimage="Bionic-${_release}-x64.AppImage"
+source=('bionic-launcher.sh' 'LICENSE')
+source_x86_64=("${_appimage}::https://bionic-installers.lmstudio.ai/linux/x64/${_release}/${_appimage}")
+noextract=("${_appimage}")
+sha256sums=('712c6176cdd6f0dcef2f8b65b9f0cb1a9bef4944000b6bd14273b00d3faa2d67'
+            'b2db7558f735c6057c8db9690a786cffb66c91c0ffc82652366d97f94947d3bc')
+sha256sums_x86_64=('5058f0c1047d89aca90159ff8a8ff9713312d0f38a1a49b0f4f116026b6094bc')
+
+prepare() {
+  chmod +x "${srcdir}/${_appimage}"
+  rm -rf "${srcdir}/squashfs-root"
+  cd "${srcdir}"
+  "./${_appimage}" --appimage-extract 'ai.elementlabs.bionic.desktop' >/dev/null
+  "./${_appimage}" --appimage-extract 'usr/share/icons/hicolor/*/apps/bionic.png' >/dev/null
+
+  if [[ ! -f squashfs-root/ai.elementlabs.bionic.desktop ]] ||
+    ! compgen -G 'squashfs-root/usr/share/icons/hicolor/*/apps/bionic.png' >/dev/null; then
+    echo 'The Bionic AppImage is missing its desktop entry or icons.' >&2
+    return 1
+  fi
+}
+
+package() {
+  install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/bionic/Bionic.AppImage"
+  install -Dm755 "${srcdir}/bionic-launcher.sh" "${pkgdir}/usr/bin/bionic"
+
+  local icon size
+  for icon in "${srcdir}"/squashfs-root/usr/share/icons/hicolor/*/apps/bionic.png; do
+    size="${icon#*/hicolor/}"
+    install -Dm644 "${icon}" \
+      "${pkgdir}/usr/share/icons/hicolor/${size%%/*}/apps/bionic.png"
+  done
+
+  sed -e 's|^Exec=.*|Exec=bionic %U|' \
+    -e '/^X-AppImage-Version=/d' \
+    -e '/^category=/d' \
+    "${srcdir}/squashfs-root/ai.elementlabs.bionic.desktop" \
+    >"${srcdir}/ai.elementlabs.bionic.desktop"
+  install -Dm644 "${srcdir}/ai.elementlabs.bionic.desktop" \
+    "${pkgdir}/usr/share/applications/ai.elementlabs.bionic.desktop"
+
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
